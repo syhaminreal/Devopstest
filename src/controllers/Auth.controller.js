@@ -1,6 +1,7 @@
 import { formatValidationError } from '../utils/format.js';
-import { signupSchema } from '../validations/auth.validation.js';
+import { signupSchema, signInSchema } from '../validations/auth.validation.js';
 import logger from '../config/logger.js';
+import { jwttoken } from '../utils/jwt.js';
 
 export const signup = async (req, res, next) => {
   try {
@@ -51,6 +52,42 @@ export const signup = async (req, res, next) => {
     if (error.message === 'User with this email already exists') {
       return res.status(409).json({ error: 'Email already exists' });
     }
+    next(error);
+  }
+};
+
+export const signin = async (req, res, next) => {
+  try {
+    const body = req.body;
+
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      return res.status(400).json({
+        error: 'validation failed',
+        details: 'Request body is missing or empty',
+      });
+    }
+
+    const validationResult = signInSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: 'validation failed',
+        details: formatValidationError(validationResult.error),
+      });
+    }
+
+    const { email, password } = validationResult.data;
+
+    logger.info(`User signed in: ${email}`);
+    
+    const token = jwttoken.sign({ email, role: 'user' });
+    
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+    });
+  } catch (error) {
+    logger.error('Signin error', error);
     next(error);
   }
 };
