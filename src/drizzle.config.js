@@ -1,6 +1,5 @@
 import 'dotenv/config';
 
-
 export default {
   schema:'./src/model/*.js',
   out:'./drizzle',
