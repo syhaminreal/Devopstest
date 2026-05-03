@@ -1,9 +1,8 @@
-import { formatValidationError } from '../../utils/format.js';
+﻿import { formatValidationError } from '../../utils/format.js';
 import { signupSchema, signInSchema } from './auth.validation.js';
 import logger from '../../config/logger.js';
 import { jwttoken } from '../../utils/jwt.js';
-import { createUser, hashPassword } from './auth.service.js';
-import bcrypt from 'bcrypt';
+import { createUser, authenticateUser } from './auth.service.js';
 import { eq } from 'drizzle-orm';
 import { db } from '#config/database.js';
 import { user } from './user.model.js';
@@ -75,21 +74,11 @@ export const signin = async (req, res, next) => {
 
     const { email, password } = validationResult.data;
 
-    const existingUser = await db.select().from(user).where(eq(user.email, email)).limit(1);
-
-    if (existingUser.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, existingUser[0].password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    const authenticatedUser = await authenticateUser(email, password);
 
     logger.info(`User signed in: ${email}`);
 
-    const token = jwttoken.sign({ email, role: existingUser[0].role });
+    const token = jwttoken.sign({ email: authenticatedUser.email, role: authenticatedUser.role });
 
     res.status(200).json({
       message: 'Login successful',
@@ -97,6 +86,38 @@ export const signin = async (req, res, next) => {
     });
   } catch (error) {
     logger.error('Signin error', error);
+
+    if (error.message === 'User not found' || error.message === 'Invalid credentials') {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
     next(error);
   }
 };
+
+export const signout = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+      const decoded = jwttoken.verify(token);
+      logger.info(`User signed out: ${decoded.email}`);
+    } catch (err) {
+      logger.warn('Signout attempted with invalid token');
+    }
+
+    res.status(200).json({
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    logger.error('Signout error', error);
+    next(error);
+  }
+};
+
